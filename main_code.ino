@@ -20,9 +20,9 @@ const int beepDurFast = 80;    // 한 삐 길이 (ms)
 const int beepRepeatFast = 8;  // 반복 횟수
 static bool blinkToneOn = false;
 
-// 타이머
-unsigned long greenStartTime = 0;
-const unsigned long timeToBlink = 5000; // 초록불 → 점멸까지 5초
+// 점멸 감지를 위한 변수
+bool lastGreenState = false;
+bool wasGreenBefore = false;
 
 // 1회 경고음 (상태 전환용)
 void playFastBeep(int pin, int toneHz) {
@@ -70,6 +70,11 @@ void playBlinkToRedSound() {
   playFastBeep(buzzerMain, toneRed);
 }
 
+void resetBlinkDetection() {
+  lastGreenState = false;
+  wasGreenBefore = false;
+}
+
 // 아두이노 초기화
 void setup() {
   Serial.begin(115200);
@@ -94,14 +99,26 @@ void loop() {
     }
   }
 
-  unsigned long now = millis();
+  // 점멸 감지 로직
+  if (state == GREEN) {
+    if (greenSeen != lastGreenState && wasGreenBefore) {
+      // 초록불 상태가 변경되었고, 이전에 초록불이 켜진 적이 있으면 점멸로 판단
+      state = GREEN_BLINK;
+      Serial.println("🟢→🟡  (GREEN→GREEN_BLINK)");
+      playGreenToBlinkSound();
+    }
+    lastGreenState = greenSeen;
+    if (greenSeen) {
+      wasGreenBefore = true;
+    }
+  }
 
   switch (state) {
     case RED:
       if (greenSeen) {
         Serial.println("🔴→🟢  (RED→GREEN)");
         playRedToGreenSound();
-        greenStartTime = now;
+        resetBlinkDetection();
         resetBlinkToneFlag();
         state = GREEN;
       }
@@ -111,18 +128,16 @@ void loop() {
       if (redSeen) {
         Serial.println("🟢→🔴  (GREEN→RED)");
         playGreenToRedSound();
+        resetBlinkDetection();
         state = RED;
-      } else if (now - greenStartTime >= timeToBlink) {
-        Serial.println("🟢→🟡  (GREEN→GREEN_BLINK)");
-        playGreenToBlinkSound();
-        state = GREEN_BLINK;
       }
       break;
 
     case GREEN_BLINK:
       if (redSeen) {
         Serial.println("🟡→🔴  (BLINK→RED)");
-        playBlinkToRedSound();  // 점멸에서 빨간불로 전환 시 소리 추가
+        playBlinkToRedSound();
+        resetBlinkDetection();
         state = RED;
       }
       break;
